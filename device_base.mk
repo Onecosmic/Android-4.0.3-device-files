@@ -142,10 +142,10 @@ PRODUCT_PACKAGES += \
 
 # audio
 PRODUCT_PACKAGES += \
-	audio_policy.aries \
 	audio.primary.aries \
 	audio.a2dp.default \
 	libaudioutils
+#	audio_policy.aries \
 
 # NFC
 #PRODUCT_PACKAGES += \
@@ -197,7 +197,7 @@ PRODUCT_PROPERTY_OVERRIDES += \
 
 # Set default USB interface
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
-	persist.sys.usb.config=mass_storage
+	persist.sys.usb.config=mass_storage,adb
 
 include frameworks/base/build/phone-hdpi-512-dalvik-heap.mk
 

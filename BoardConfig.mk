@@ -24,6 +24,10 @@ BOARD_FM_DEVICE := si4709
 
 BOARD_CUSTOM_RECOVERY_KEYMAPPING := /device/samsung/aries/recovery/recovery_keys.c
 
+ifeq ($(HOST_OS),linux)
+WITH_DEXPREOPT := true
+endif
+
 # Use the non-open-source parts, if they're present
 -include vendor/samsung/aries/BoardConfigVendor.mk
 
