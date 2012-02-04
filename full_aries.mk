@@ -42,5 +42,5 @@ $(call inherit-product, device/samsung/aries/device.mk)
 # Discard inherited values and use our own instead.
 PRODUCT_NAME := full_aries
 PRODUCT_DEVICE := aries
-PRODUCT_BRAND := Android
-PRODUCT_MODEL := Full Android on Aries
+PRODUCT_BRAND := samsung
+PRODUCT_MODEL := GT-I9000B

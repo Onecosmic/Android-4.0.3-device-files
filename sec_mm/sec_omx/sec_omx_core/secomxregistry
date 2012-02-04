@@ -1,4 +1,4 @@
-libOMX.SEC.AVC.Decoder.so
-libOMX.SEC.M4V.Decoder.so
-libOMX.SEC.AVC.Encoder.so
-libOMX.SEC.M4V.Encoder.so
+libOMX.SEC.AVC.Decoder.aries.so
+libOMX.SEC.M4V.Decoder.aries.so
+libOMX.SEC.AVC.Encoder.aries.so
+libOMX.SEC.M4V.Encoder.aries.so

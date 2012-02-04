@@ -47,6 +47,7 @@ extern "C" {
 }
 #endif
 
+#include <cutils/properties.h>
 #include <ui/android_native_buffer.h>
 #include <ui/GraphicBuffer.h>
 #include <ui/GraphicBufferMapper.h>
@@ -445,6 +446,12 @@ EXIT:
     FunctionOut();
 
     return ret;
+}
+
+int isTvOutEnabled() {
+    char value[PROPERTY_VALUE_MAX];
+    property_get("init.svc.tvouthack", value, "");
+    return (strcmp(value, "running") == 0);
 }
 
 #endif

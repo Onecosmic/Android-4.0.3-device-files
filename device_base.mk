@@ -14,11 +14,11 @@
 
 
 # This file is the device-specific product definition file for
-# aries. It lists all the overlays, files, modules and properties
+# crespo. It lists all the overlays, files, modules and properties
 # that are specific to this hardware: i.e. those are device-specific
 # drivers, configuration files, settings, etc...
 
-# Note that aries is not a fully open device. Some of the drivers
+# Note that crespo is not a fully open device. Some of the drivers
 # aren't publicly available in all circumstances, which means that some
 # of the hardware capabilities aren't present in builds where those
 # drivers aren't available. Such cases are handled by having this file
@@ -35,7 +35,6 @@
 # but not to the original vendor tree. Be sure to update both.
 
 
-
 # These is the hardware-specific overlay, which points to the location
 # of hardware-specific resource overrides, typically the frameworks and
 # application settings that are stored in resourced.
@@ -44,141 +43,95 @@ DEVICE_PACKAGE_OVERLAYS := device/samsung/aries/overlay
 # These are the hardware-specific configuration files
 PRODUCT_COPY_FILES := \
 	device/samsung/aries/vold.fstab:system/etc/vold.fstab \
-	device/samsung/aries/egl.cfg:system/lib/egl/egl.cfg
+	device/samsung/aries/egl.cfg:system/lib/egl/egl.cfg \
+	device/samsung/aries/mxt224_ts_input.idc:system/usr/idc/mxt224_ts_input.idc \
+	device/samsung/aries/main.conf:system/etc/bluetooth/main.conf
 
 # Init files
 PRODUCT_COPY_FILES += \
 	device/samsung/aries/init.aries.rc:root/init.aries.rc \
 	device/samsung/aries/init.aries.usb.rc:root/init.aries.usb.rc \
-	device/samsung/aries/ueventd.aries.rc:root/ueventd.aries.rc
+	device/samsung/aries/init.aries.usb.rc:recovery/root/usb.rc \
+	device/samsung/aries/lpm.rc:root/lpm.rc \
+	device/samsung/aries/ueventd.aries.rc:root/ueventd.aries.rc \
+	device/samsung/aries/setupdatadata.sh:root/sbin/setupdatadata.sh
 
-# Prebuilt kl and kcm keymaps
+# Prebuilt kl keymaps
 PRODUCT_COPY_FILES += \
-	device/samsung/aries/s3c-keypad.kl:system/usr/keylayout/s3c-keypad.kl \
-	device/samsung/aries/s3c-keypad.kcm:system/usr/keychars/s3c-keypad.kcm \
-	device/samsung/aries/aries-keypad.kl:system/usr/keylayout/aries-keypad.kl \
-	device/samsung/aries/aries-keypad.kcm:system/usr/keychars/aries-keypad.kcm \
 	device/samsung/aries/cypress-touchkey.kl:system/usr/keylayout/cypress-touchkey.kl \
-	device/samsung/aries/cypress-touchkey.kcm:system/usr/keychars/cypress-touchkey.kcm \
 	device/samsung/aries/sec_jack.kl:system/usr/keylayout/sec_jack.kl \
-	device/samsung/aries/sec_jack.kcm:system/usr/keychars/sec_jack.kcm \
-	device/samsung/aries/mxt224_ts_input.kl:system/usr/keylayout/mxt224_ts_input.kl \
-	device/samsung/aries/mxt224_ts_input.kcm:system/usr/keychars/mxt224_ts_input.kcm
-
-#Bluetooth setup
-PRODUCT_COPY_FILES += \
-	system/bluetooth/data/main.conf:system/etc/bluetooth/main.conf \
-
-#NVRAM setup
-PRODUCT_COPY_FILES += \
-        device/samsung/aries/nvram_net.txt:system/vendor/firmware/nvram_net.txt
-
-#MFC Firmware
-PRODUCT_COPY_FILES += \
-        device/samsung/aries/samsung_mfc_fw.bin:system/vendor/firmware/samsung_mfc_fw.bin
-
-# NFC
-PRODUCT_PACKAGES += \
-	Tag
-
-# Commands to migrate prefs from com.android.nfc3 to com.android.nfc
-##PRODUCT_COPY_FILES += \
-##	packages/apps/Nfc/migrate_nfc.txt:system/etc/updatecmds/migrate_nfc.txt
-
-# file that declares the MIFARE NFC constant
-##PRODUCT_COPY_FILES += \
-##	device/sample/nxp/com.nxp.mifare.xml:system/etc/permissions/com.nxp.mifare.xml
-
-## NFC EXTRAS add-on API
-## PRODUCT_PACKAGES += \
-## 	com.android.nfc_extras
-##PRODUCT_COPY_FILES += \
-##	frameworks/base/nfc-extras/com.android.nfc_extras.xml:system/etc/permissions/com.android.nfc_extras.xml
-
-# NFCEE access control
-#ifeq ($(TARGET_BUILD_VARIANT),user)
-#	NFCEE_ACCESS_PATH := device/samsung/aries/nfcee_access.xml
-#else
-#	NFCEE_ACCESS_PATH := device/samsung/aries/nfcee_access_debug.xml
-#endif
-#PRODUCT_COPY_FILES += \
-#	$(NFCEE_ACCESS_PATH):system/etc/nfcee_access.xml
+	device/samsung/aries/s3c-keypad.kl:system/usr/keylayout/s3c-keypad.kl
 
 # Generated kcm keymaps
-PRODUCT_PACKAGES += \
-	s3c-keypad.kcm \
-	cypress-touchkey.kcm
+PRODUCT_PACKAGES := \
+       cypress-touchkey.kcm \
+       s3c-keypad.kcm
 
 # Filesystem management tools
 PRODUCT_PACKAGES += \
 	make_ext4fs \
-	setup_fs
+	setup_fs \
+	bml_over_mtd
 
-#PRODUCT_CHARACTERISTICS := nosdcard
+# Usb accessory
+PRODUCT_PACKAGES += \
+	com.android.future.usb.accessory
 
 # These are the OpenMAX IL configuration files
 PRODUCT_COPY_FILES += \
 	device/samsung/aries/sec_mm/sec_omx/sec_omx_core/secomxregistry:system/etc/secomxregistry \
 	device/samsung/aries/media_profiles.xml:system/etc/media_profiles.xml
 
-
 # These are the OpenMAX IL modules
 PRODUCT_PACKAGES += \
-	libSEC_OMX_Core \
-	libOMX.SEC.AVC.Decoder \
-	libOMX.SEC.M4V.Decoder \
-	libOMX.SEC.M4V.Encoder \
-	libOMX.SEC.AVC.Encoder
+	libSEC_OMX_Core.aries \
+	libOMX.SEC.AVC.Decoder.aries \
+	libOMX.SEC.M4V.Decoder.aries \
+	libOMX.SEC.M4V.Encoder.aries \
+	libOMX.SEC.AVC.Encoder.aries
 
 # Misc other modules
 PRODUCT_PACKAGES += \
-	lights.s5pc110 \
-	hwcomposer.s5pc110 \
-	sensors.aries 
-
-# Camera
-PRODUCT_PACKAGES += \
-	camera.aries
-
-# audio
-PRODUCT_PACKAGES += \
+	lights.aries \
+	sensors.aries \
+	hwcomposer.aries \
+	camera.aries \
 	audio.primary.aries \
+	audio_policy.aries \
 	audio.a2dp.default \
-	libaudioutils
-#	audio_policy.aries \
-
-# NFC
-#PRODUCT_PACKAGES += \
-#	nfc.aries
+	libs3cjpeg
 
 # Libs
 PRODUCT_PACKAGES += \
-	libcamera \
-	libstagefrighthw \
-	com.android.future.usb.accessory
+	libstagefrighthw
 
-# Input device calibration files
-PRODUCT_COPY_FILES += \
-	device/samsung/aries/mxt224_ts_input.idc:system/usr/idc/mxt224_ts_input.idc
+# Bluetooth MAC Address
+PRODUCT_PACKAGES += \
+	bdaddr_read
 
-# for bugmailer
-PRODUCT_PACKAGES += send_bug
+# Device-specific packages
+PRODUCT_PACKAGES += \
+	SamsungServiceMode \
+	AriesParts \
+	tvouthack
+
+# apns config file
 PRODUCT_COPY_FILES += \
-	system/extras/bugmailer/bugmailer.sh:system/bin/bugmailer.sh \
-	system/extras/bugmailer/send_bug:system/bin/send_bug
+	development/data/etc/apns-conf.xml:system/etc/apns-conf.xml
 
 # These are the hardware-specific features
 PRODUCT_COPY_FILES += \
 	frameworks/base/data/etc/handheld_core_hardware.xml:system/etc/permissions/handheld_core_hardware.xml \
 	frameworks/base/data/etc/android.hardware.camera.flash-autofocus.xml:system/etc/permissions/android.hardware.camera.flash-autofocus.xml \
 	frameworks/base/data/etc/android.hardware.camera.front.xml:system/etc/permissions/android.hardware.camera.front.xml \
+	frameworks/base/data/etc/android.hardware.telephony.gsm.xml:system/etc/permissions/android.hardware.telephony.gsm.xml \
+        frameworks/base/data/etc/android.hardware.location.xml:system/etc/permissions/android.hardware.location.xml \
 	frameworks/base/data/etc/android.hardware.location.gps.xml:system/etc/permissions/android.hardware.location.gps.xml \
 	frameworks/base/data/etc/android.hardware.wifi.xml:system/etc/permissions/android.hardware.wifi.xml \
+	frameworks/base/data/etc/android.hardware.wifi.direct.xml:system/etc/permissions/android.hardware.wifi.direct.xml \
 	frameworks/base/data/etc/android.hardware.sensor.proximity.xml:system/etc/permissions/android.hardware.sensor.proximity.xml \
 	frameworks/base/data/etc/android.hardware.sensor.light.xml:system/etc/permissions/android.hardware.sensor.light.xml \
-	frameworks/base/data/etc/android.hardware.sensor.gyroscope.xml:system/etc/permissions/android.hardware.sensor.gyroscope.xml \
 	frameworks/base/data/etc/android.hardware.touchscreen.multitouch.jazzhand.xml:system/etc/permissions/android.hardware.touchscreen.multitouch.jazzhand.xml \
-	frameworks/base/data/etc/android.hardware.nfc.xml:system/etc/permissions/android.hardware.nfc.xml \
 	frameworks/base/data/etc/android.software.sip.voip.xml:system/etc/permissions/android.software.sip.voip.xml \
 	frameworks/base/data/etc/android.hardware.usb.accessory.xml:system/etc/permissions/android.hardware.usb.accessory.xml \
 	packages/wallpapers/LivePicker/android.software.live_wallpaper.xml:system/etc/permissions/android.software.live_wallpaper.xml
@@ -192,37 +145,38 @@ PRODUCT_PROPERTY_OVERRIDES := \
 # Note that the only such settings should be the ones that are too low-level to
 # be reachable from resources or other mechanisms.
 PRODUCT_PROPERTY_OVERRIDES += \
-	wifi.interface=wlan0 \
-	wifi.supplicant_scan_interval=15
+       wifi.interface=wlan0 \
+       wifi.supplicant_scan_interval=20 \
+       ro.telephony.ril_class=SamsungRIL \
+       ro.telephony.ril.v3=icccardstatus,datacall,signalstrength,facilitylock \
+       mobiledata.interfaces=pdp0,eth0,gprs,ppp0 \
+
+# enable Google-specific location features,
+# like NetworkLocationProvider and LocationCollector
+PRODUCT_PROPERTY_OVERRIDES += \
+        ro.com.google.locationfeatures=1 \
+        ro.com.google.networklocation=1
+
+# Extended JNI checks
+# The extended JNI checks will cause the system to run more slowly, but they can spot a variety of nasty bugs 
+# before they have a chance to cause problems.
+# Default=true for development builds, set by android buildsystem.
+PRODUCT_PROPERTY_OVERRIDES += \
+    ro.kernel.android.checkjni=0 \
+    dalvik.vm.checkjni=false
 
 # Set default USB interface
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
-	persist.sys.usb.config=mass_storage,adb
+    persist.sys.usb.config=mass_storage,adb
 
 include frameworks/base/build/phone-hdpi-512-dalvik-heap.mk
+
+PRODUCT_APPT_CONFIG := normal hdpi
 
 # we have enough storage space to hold precise GC data
 PRODUCT_TAGS += dalvik.gc.type-precise
 
-# Screen size is "normal", density is "hdpi"
-PRODUCT_AAPT_CONFIG := normal hdpi
-
-ifeq ($(TARGET_PREBUILT_WIFI_MODULE),)
-LOCAL_WIFI_MODULE := device/samsung/aries/bcm4329.ko
-else
-LOCAL_WIFI_MODULE := $(TARGET_PREBUILT_WIFI_MODULE)
-endif
-
 PRODUCT_COPY_FILES += \
-	$(LOCAL_WIFI_MODULE):system/modules/bcm4329.ko
+	device/samsung/aries/updater.sh:updater.sh
 
-ifeq ($(TARGET_PREBUILT_KERNEL),)
-LOCAL_KERNEL := device/samsung/aries/kernel
-else
-LOCAL_KERNEL := $(TARGET_PREBUILT_KERNEL)
-endif
-
-PRODUCT_COPY_FILES += \
-    $(LOCAL_KERNEL):kernel
-
-$(call inherit-product-if-exists, vendor/nxp/pn544/nxp-pn544-fw-vendor.mk)
+$(call inherit-product-if-exists, hardware/broadcom/wlan/bcmdhd/firmware/bcm4329/device-bcm.mk)

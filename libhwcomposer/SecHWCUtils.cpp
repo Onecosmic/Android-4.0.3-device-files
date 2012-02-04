@@ -443,7 +443,7 @@ static int get_src_phys_addr(struct hwc_context_t *ctx,
 
    if(src_img->mem_type == HWC_PHYS_MEM_TYPE) {
         switch(src_img->format) {
-        case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+        case SAMSUNG_HAL_PIXEL_FORMAT_YCbCr_420_SP:
             fimc->params.src.buf_addr_phy_rgb_y = phyAddr[0];
             fimc->params.src.buf_addr_phy_cb    = phyAddr[1];
             break;
@@ -756,7 +756,7 @@ switch (rotate_value) {
 
     /* set input dma address (Y/RGB, Cb, Cr) */
     switch (src_img->format) {
-    case HAL_PIXEL_FORMAT_YCbCr_420_SP:
+    case SAMSUNG_HAL_PIXEL_FORMAT_YCbCr_420_SP:
         /* for video display zero copy case */
         fimc_src_buf.base[0] = params->src.buf_addr_phy_rgb_y;
         fimc_src_buf.base[1] = params->src.buf_addr_phy_cb;

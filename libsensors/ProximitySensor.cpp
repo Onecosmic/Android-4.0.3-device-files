@@ -29,7 +29,7 @@
 /*****************************************************************************/
 
 ProximitySensor::ProximitySensor()
-    : SensorBase(NULL, "proximity_sensor"),
+    : SensorBase(NULL, "proximity"),
       mEnabled(0),
       mInputReader(4),
       mHasPendingEvent(false)

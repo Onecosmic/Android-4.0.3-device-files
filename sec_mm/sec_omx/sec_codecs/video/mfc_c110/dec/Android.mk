@@ -7,7 +7,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_SRC_FILES := \
 	src/SsbSipMfcDecAPI.c
 
-LOCAL_MODULE := libsecmfcdecapi
+LOCAL_MODULE := libsecmfcdecapi.aries
 
 
 

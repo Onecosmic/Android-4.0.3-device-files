@@ -2,6 +2,7 @@
 **
 ** Copyright 2008, The Android Open Source Project
 ** Copyright 2010, Samsung Electronics Co. LTD
+** Copyright 2011, The CyanogenMod Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -16,11 +17,13 @@
 ** limitations under the License.
 */
 
-#define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "CameraHardwareSec"
 #include <utils/Log.h>
 
 #include "SecCameraHWInterface.h"
+#include "SecCameraUtils.h"
+
 #include <utils/threads.h>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -154,9 +157,9 @@ void CameraHardwareSec::initDefaultParameters(int cameraId)
 
     if (cameraId == SecCamera::CAMERA_ID_BACK) {
         p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
-              "720x480,640x480,352x288,176x144");
+              "1280x720,800x480,720x480,640x480,592x480,352x288");
         p.set(CameraParameters::KEY_SUPPORTED_PICTURE_SIZES,
-              "2560x1920,2048x1536,1600x1200,1280x960,640x480");
+              "2560x1920,2560x1536,2048x1536,2048x1232,1600x1200,1600x960,800x480,640x480");
     } else {
         p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_SIZES,
               "640x480,320x240,176x144");
@@ -237,6 +240,7 @@ void CameraHardwareSec::initDefaultParameters(int cameraId)
     p.set(CameraParameters::KEY_SUPPORTED_EFFECTS, parameterString.string());
 
     if (cameraId == SecCamera::CAMERA_ID_BACK) {
+#ifdef HAVE_FLASH
         parameterString = CameraParameters::FLASH_MODE_ON;
         parameterString.append(",");
         parameterString.append(CameraParameters::FLASH_MODE_OFF);
@@ -248,6 +252,7 @@ void CameraHardwareSec::initDefaultParameters(int cameraId)
               parameterString.string());
         p.set(CameraParameters::KEY_FLASH_MODE,
               CameraParameters::FLASH_MODE_OFF);
+#endif
 
         parameterString = CameraParameters::SCENE_MODE_AUTO;
         parameterString.append(",");
@@ -270,8 +275,9 @@ void CameraHardwareSec::initDefaultParameters(int cameraId)
         parameterString.append(CameraParameters::SCENE_MODE_PARTY);
         parameterString.append(",");
         parameterString.append(CameraParameters::SCENE_MODE_CANDLELIGHT);
-        p.set(CameraParameters::KEY_SUPPORTED_SCENE_MODES,
-              parameterString.string());
+        // TODO: CE147 doesn't understand scene mode
+        //p.set(CameraParameters::KEY_SUPPORTED_SCENE_MODES,
+        //      parameterString.string());
         p.set(CameraParameters::KEY_SCENE_MODE,
               CameraParameters::SCENE_MODE_AUTO);
 
@@ -282,6 +288,16 @@ void CameraHardwareSec::initDefaultParameters(int cameraId)
         p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE, "15000,30000");
 
         p.set(CameraParameters::KEY_FOCAL_LENGTH, "3.43");
+
+        // touch focus
+        p.set(CameraParameters::KEY_MAX_NUM_FOCUS_AREAS, "1");
+        p.set(CameraParameters::KEY_FOCUS_AREAS, "(0,0,0,0,0)");
+
+        // zoom
+        p.set(CameraParameters::KEY_ZOOM, "0");
+        p.set(CameraParameters::KEY_MAX_ZOOM, "12");
+        p.set(CameraParameters::KEY_ZOOM_RATIOS, "100,125,150,175,200,225,250,275,300,325,350,375,400");
+        p.set(CameraParameters::KEY_ZOOM_SUPPORTED, CameraParameters::TRUE);
     } else {
         p.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE, "(7500,30000)");
         p.set(CameraParameters::KEY_PREVIEW_FPS_RANGE, "7500,30000");
@@ -1054,7 +1070,6 @@ int CameraHardwareSec::pictureThread()
     int mThumbWidth, mThumbHeight, mThumbSize;
     int cap_width, cap_height, cap_frame_size;
     int JpegImageSize, JpegExifSize;
-    bool isLSISensor = false;
 
     unsigned int output_size = 0;
 
@@ -1118,25 +1133,9 @@ int CameraHardwareSec::pictureThread()
     LOG_CAMERA("getSnapshotAndJpeg interval: %lu us", LOG_TIME(1));
 
     if (mSecCamera->getCameraId() == SecCamera::CAMERA_ID_BACK) {
-        isLSISensor = !strncmp((const char*)mCameraSensorName, "S5K4ECGX", 8);
-        if(isLSISensor) {
-            LOGI("== Camera Sensor Detect %s - Samsung LSI SOC 5M ==\n", mCameraSensorName);
-            // LSI 5M SOC
-            if (!SplitFrame(jpeg_data, SecCamera::getInterleaveDataSize(),
-                            SecCamera::getJpegLineLength(),
-                            mPostViewWidth * 2, mPostViewWidth,
-                            JpegHeap->data, &JpegImageSize,
-                            PostviewHeap->base(), &mPostViewSize)) {
-                ret = UNKNOWN_ERROR;
-                goto out;
-            }
-        } else {
-            LOGI("== Camera Sensor Detect %s Sony SOC 5M ==\n", mCameraSensorName);
-            decodeInterleaveData(jpeg_data,
-                                 SecCamera::getInterleaveDataSize(),
-                                 mPostViewWidth, mPostViewHeight,
-                                 &JpegImageSize, JpegHeap->data, PostviewHeap->base());
-        }
+        // TODO: copy postview to PostviewHeap->base()
+        memcpy(JpegHeap->data, jpeg_data, jpeg_size);
+        JpegImageSize = jpeg_size;
     } else {
         JpegImageSize = static_cast<int>(output_size);
     }
@@ -1152,27 +1151,35 @@ int CameraHardwareSec::pictureThread()
     }
 
     if (mMsgEnabled & CAMERA_MSG_COMPRESSED_IMAGE) {
-        camera_memory_t *ExifHeap =
-            mGetMemoryCb(-1, EXIF_FILE_SIZE + JPG_STREAM_BUF_SIZE, 1, 0);
-        JpegExifSize = mSecCamera->getExif((unsigned char *)ExifHeap->data,
-                                           (unsigned char *)ThumbnailHeap->base());
+        if (mSecCamera->getCameraId() == SecCamera::CAMERA_ID_BACK) {
+            // Aries' back camera already has EXIF data
+            camera_memory_t *mem = mGetMemoryCb(-1, JpegImageSize, 1, 0);
+            memcpy(mem->data, JpegHeap->data, JpegImageSize);
+            mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, mem, 0, NULL, mCallbackCookie);
+            mem->release(mem);
+        } else {
+            camera_memory_t *ExifHeap =
+                mGetMemoryCb(-1, EXIF_FILE_SIZE + JPG_STREAM_BUF_SIZE, 1, 0);
+            JpegExifSize = mSecCamera->getExif((unsigned char *)ExifHeap->data,
+                                               (unsigned char *)ThumbnailHeap->base());
 
-        LOGV("JpegExifSize=%d", JpegExifSize);
+            LOGV("JpegExifSize=%d", JpegExifSize);
 
-        if (JpegExifSize < 0) {
-            ret = UNKNOWN_ERROR;
+            if (JpegExifSize < 0) {
+                ret = UNKNOWN_ERROR;
+                ExifHeap->release(ExifHeap);
+                goto out;
+            }
+
+            camera_memory_t *mem = mGetMemoryCb(-1, JpegImageSize + JpegExifSize, 1, 0);
+            uint8_t *ptr = (uint8_t *) mem->data;
+            memcpy(ptr, JpegHeap->data, 2); ptr += 2;
+            memcpy(ptr, ExifHeap->data, JpegExifSize); ptr += JpegExifSize;
+            memcpy(ptr, (uint8_t *) JpegHeap->data + 2, JpegImageSize - 2);
+            mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, mem, 0, NULL, mCallbackCookie);
+            mem->release(mem);
             ExifHeap->release(ExifHeap);
-            goto out;
         }
-
-        camera_memory_t *mem = mGetMemoryCb(-1, JpegImageSize + JpegExifSize, 1, 0);
-        uint8_t *ptr = (uint8_t *) mem->data;
-        memcpy(ptr, JpegHeap->data, 2); ptr += 2;
-        memcpy(ptr, ExifHeap->data, JpegExifSize); ptr += JpegExifSize;
-        memcpy(ptr, (uint8_t *) JpegHeap->data + 2, JpegImageSize - 2);
-        mDataCb(CAMERA_MSG_COMPRESSED_IMAGE, mem, 0, NULL, mCallbackCookie);
-        mem->release(mem);
-        ExifHeap->release(ExifHeap);
     }
 
     LOG_TIME_END(0)
@@ -1295,189 +1302,6 @@ bool CameraHardwareSec::FindEOIMarkerInJPEG(unsigned char *pBuf, int dwBufSize, 
     }
 
     return false;
-}
-
-bool CameraHardwareSec::SplitFrame(unsigned char *pFrame, int dwSize,
-                    int dwJPEGLineLength, int dwVideoLineLength, int dwVideoHeight,
-                    void *pJPEG, int *pdwJPEGSize,
-                    void *pVideo, int *pdwVideoSize)
-{
-    LOGV("===========SplitFrame Start==============");
-
-    if (NULL == pFrame || 0 >= dwSize) {
-        LOGE("There is no contents (pFrame=%p, dwSize=%d", pFrame, dwSize);
-        return false;
-    }
-
-    if (0 == dwJPEGLineLength || 0 == dwVideoLineLength) {
-        LOGE("There in no input information for decoding interleaved jpeg");
-        return false;
-    }
-
-    unsigned char *pSrc = pFrame;
-    unsigned char *pSrcEnd = pFrame + dwSize;
-
-    unsigned char *pJ = (unsigned char *)pJPEG;
-    int dwJSize = 0;
-    unsigned char *pV = (unsigned char *)pVideo;
-    int dwVSize = 0;
-
-    bool bRet = false;
-    bool isFinishJpeg = false;
-
-    while (pSrc < pSrcEnd) {
-        // Check video start marker
-        if (CheckVideoStartMarker(pSrc)) {
-            int copyLength;
-
-            if (pSrc + dwVideoLineLength <= pSrcEnd)
-                copyLength = dwVideoLineLength;
-            else
-                copyLength = pSrcEnd - pSrc - VIDEO_COMMENT_MARKER_LENGTH;
-
-            // Copy video data
-            if (pV) {
-                memcpy(pV, pSrc + VIDEO_COMMENT_MARKER_LENGTH, copyLength);
-                pV += copyLength;
-                dwVSize += copyLength;
-            }
-
-            pSrc += copyLength + VIDEO_COMMENT_MARKER_LENGTH;
-        } else {
-            // Copy pure JPEG data
-            int size = 0;
-            int dwCopyBufLen = dwJPEGLineLength <= pSrcEnd-pSrc ? dwJPEGLineLength : pSrcEnd - pSrc;
-
-            if (FindEOIMarkerInJPEG((unsigned char *)pSrc, dwCopyBufLen, &size)) {
-                isFinishJpeg = true;
-                size += 2;  // to count EOF marker size
-            } else {
-                if ((dwCopyBufLen == 1) && (pJPEG < pJ)) {
-                    unsigned char checkBuf[2] = { *(pJ - 1), *pSrc };
-
-                    if (CheckEOIMarker(checkBuf))
-                        isFinishJpeg = true;
-                }
-                size = dwCopyBufLen;
-            }
-
-            memcpy(pJ, pSrc, size);
-
-            dwJSize += size;
-
-            pJ += dwCopyBufLen;
-            pSrc += dwCopyBufLen;
-        }
-        if (isFinishJpeg)
-            break;
-    }
-
-    if (isFinishJpeg) {
-        bRet = true;
-        if(pdwJPEGSize)
-            *pdwJPEGSize = dwJSize;
-        if(pdwVideoSize)
-            *pdwVideoSize = dwVSize;
-    } else {
-        LOGE("DecodeInterleaveJPEG_WithOutDT() => Can not find EOI");
-        bRet = false;
-        if(pdwJPEGSize)
-            *pdwJPEGSize = 0;
-        if(pdwVideoSize)
-            *pdwVideoSize = 0;
-    }
-    LOGV("===========SplitFrame end==============");
-
-    return bRet;
-}
-
-int CameraHardwareSec::decodeInterleaveData(unsigned char *pInterleaveData,
-                                                 int interleaveDataSize,
-                                                 int yuvWidth,
-                                                 int yuvHeight,
-                                                 int *pJpegSize,
-                                                 void *pJpegData,
-                                                 void *pYuvData)
-{
-    if (pInterleaveData == NULL)
-        return false;
-
-    bool ret = true;
-    unsigned int *interleave_ptr = (unsigned int *)pInterleaveData;
-    unsigned char *jpeg_ptr = (unsigned char *)pJpegData;
-    unsigned char *yuv_ptr = (unsigned char *)pYuvData;
-    unsigned char *p;
-    int jpeg_size = 0;
-    int yuv_size = 0;
-
-    int i = 0;
-
-    LOGV("decodeInterleaveData Start~~~");
-    while (i < interleaveDataSize) {
-        if ((*interleave_ptr == 0xFFFFFFFF) || (*interleave_ptr == 0x02FFFFFF) ||
-                (*interleave_ptr == 0xFF02FFFF)) {
-            // Padding Data
-//            LOGE("%d(%x) padding data\n", i, *interleave_ptr);
-            interleave_ptr++;
-            i += 4;
-        }
-        else if ((*interleave_ptr & 0xFFFF) == 0x05FF) {
-            // Start-code of YUV Data
-//            LOGE("%d(%x) yuv data\n", i, *interleave_ptr);
-            p = (unsigned char *)interleave_ptr;
-            p += 2;
-            i += 2;
-
-            // Extract YUV Data
-            if (pYuvData != NULL) {
-                memcpy(yuv_ptr, p, yuvWidth * 2);
-                yuv_ptr += yuvWidth * 2;
-                yuv_size += yuvWidth * 2;
-            }
-            p += yuvWidth * 2;
-            i += yuvWidth * 2;
-
-            // Check End-code of YUV Data
-            if ((*p == 0xFF) && (*(p + 1) == 0x06)) {
-                interleave_ptr = (unsigned int *)(p + 2);
-                i += 2;
-            } else {
-                ret = false;
-                break;
-            }
-        } else {
-            // Extract JPEG Data
-//            LOGE("%d(%x) jpg data, jpeg_size = %d bytes\n", i, *interleave_ptr, jpeg_size);
-            if (pJpegData != NULL) {
-                memcpy(jpeg_ptr, interleave_ptr, 4);
-                jpeg_ptr += 4;
-                jpeg_size += 4;
-            }
-            interleave_ptr++;
-            i += 4;
-        }
-    }
-    if (ret) {
-        if (pJpegData != NULL) {
-            // Remove Padding after EOI
-            for (i = 0; i < 3; i++) {
-                if (*(--jpeg_ptr) != 0xFF) {
-                    break;
-                }
-                jpeg_size--;
-            }
-            *pJpegSize = jpeg_size;
-
-        }
-        // Check YUV Data Size
-        if (pYuvData != NULL) {
-            if (yuv_size != (yuvWidth * yuvHeight * 2)) {
-                ret = false;
-            }
-        }
-    }
-    LOGV("decodeInterleaveData End~~~");
-    return ret;
 }
 
 status_t CameraHardwareSec::dump(int fd) const
@@ -1804,7 +1628,9 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
     if (mSecCamera->getCameraId() == SecCamera::CAMERA_ID_BACK) {
         int  new_scene_mode = -1;
 
+#ifdef HAVE_FLASH
         const char *new_flash_mode_str = params.get(CameraParameters::KEY_FLASH_MODE);
+#endif
 
         // fps range is (15000,30000) by default.
         mParameters.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE, "(15000,30000)");
@@ -1813,64 +1639,86 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
 
         if (!strcmp(new_scene_mode_str, CameraParameters::SCENE_MODE_AUTO)) {
             new_scene_mode = SCENE_MODE_NONE;
+#ifdef HAVE_FLASH
             mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "on,off,auto,torch");
+#endif
         } else {
             // defaults for non-auto scene modes
             if (mSecCamera->getCameraId() == SecCamera::CAMERA_ID_BACK) {
                 new_focus_mode_str = CameraParameters::FOCUS_MODE_AUTO;
             }
+#ifdef HAVE_FLASH
             new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
+#endif
 
             if (!strcmp(new_scene_mode_str,
                        CameraParameters::SCENE_MODE_PORTRAIT)) {
                 new_scene_mode = SCENE_MODE_PORTRAIT;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_AUTO;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_LANDSCAPE)) {
                 new_scene_mode = SCENE_MODE_LANDSCAPE;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_SPORTS)) {
                 new_scene_mode = SCENE_MODE_SPORTS;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_PARTY)) {
                 new_scene_mode = SCENE_MODE_PARTY_INDOOR;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_AUTO;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "auto");
+#endif
             } else if ((!strcmp(new_scene_mode_str,
                                 CameraParameters::SCENE_MODE_BEACH)) ||
                         (!strcmp(new_scene_mode_str,
                                  CameraParameters::SCENE_MODE_SNOW))) {
                 new_scene_mode = SCENE_MODE_BEACH_SNOW;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_SUNSET)) {
                 new_scene_mode = SCENE_MODE_SUNSET;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_NIGHT)) {
                 new_scene_mode = SCENE_MODE_NIGHTSHOT;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_PREVIEW_FPS_RANGE, "(4000,30000)");
                 mParameters.set(CameraParameters::KEY_PREVIEW_FPS_RANGE,
                                 "4000,30000");
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_FIREWORKS)) {
                 new_scene_mode = SCENE_MODE_FIREWORKS;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else if (!strcmp(new_scene_mode_str,
                                CameraParameters::SCENE_MODE_CANDLELIGHT)) {
                 new_scene_mode = SCENE_MODE_CANDLE_LIGHT;
+#ifdef HAVE_FLASH
                 new_flash_mode_str = CameraParameters::FLASH_MODE_OFF;
                 mParameters.set(CameraParameters::KEY_SUPPORTED_FLASH_MODES, "off");
+#endif
             } else {
                 LOGE("%s::unmatched scene_mode(%s)",
                         __func__, new_scene_mode_str); //action, night-portrait, theatre, steadyphoto
@@ -1915,6 +1763,7 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
             }
         }
 
+#ifdef HAVE_FLASH
         // flash..
         if (new_flash_mode_str != NULL) {
             int  new_flash_mode = -1;
@@ -1940,6 +1789,7 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
                 }
             }
         }
+#endif
 
         //  scene..
         if (0 <= new_scene_mode) {
@@ -1948,6 +1798,47 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
                 ret = UNKNOWN_ERROR;
             } else {
                 mParameters.set(CameraParameters::KEY_SCENE_MODE, new_scene_mode_str);
+            }
+        }
+
+        // touch to focus
+        const char *new_focus_area = params.get(CameraParameters::KEY_FOCUS_AREAS);
+        if (new_focus_area != NULL) {
+            LOGV("focus area: %s", new_focus_area);
+            SecCameraArea area(new_focus_area);
+
+            if (!area.isDummy()) {
+                int width, height, frame_size;
+                mSecCamera->getPreviewSize(&width, &height, &frame_size);
+
+                int x = area.getX(width);
+                int y = area.getY(height);
+
+                LOGV("area=%s, x=%i, y=%i", area.toString8().string(), x, y);
+                if (mSecCamera->setObjectPosition(x, y) < 0) {
+                    LOGE("ERR(%s):Fail on mSecCamera->setObjectPosition(%s)", __func__, new_focus_area);
+                    ret = UNKNOWN_ERROR;
+                }
+            }
+
+            int val = area.isDummy() ? 0 : 1;
+            if (mSecCamera->setTouchAFStartStop(val) < 0) {
+                LOGE("ERR(%s):Fail on mSecCamera->setTouchAFStartStop(%d)", __func__, val);
+                ret = UNKNOWN_ERROR;
+            }
+        }
+
+        // zoom
+        int new_zoom = params.getInt(CameraParameters::KEY_ZOOM);
+        int max_zoom = params.getInt(CameraParameters::KEY_MAX_ZOOM);
+        LOGV("%s : new_zoom %d", __func__, new_zoom);
+        if (0 <= new_zoom && new_zoom <= max_zoom) {
+            LOGV("%s : set zoom:%d\n", __func__, new_zoom);
+            if (mSecCamera->setZoom(new_zoom) < 0) {
+                LOGE("ERR(%s):Fail on mSecCamera->setZoom(%d)", __func__, new_zoom);
+                ret = UNKNOWN_ERROR;
+            } else {
+                mParameters.set(CameraParameters::KEY_ZOOM, new_zoom);
             }
         }
     } else {
@@ -2213,6 +2104,12 @@ status_t CameraHardwareSec::setParameters(const CameraParameters& params)
             ret = UNKNOWN_ERROR;
         }
     }
+
+    if (mSecCamera->setBatchReflection()) {
+        LOGE("ERR(%s):Fail on mSecCamera->setBatchReflection()", __func__);
+        ret = UNKNOWN_ERROR;
+    }
+
     LOGV("%s return ret = %d", __func__, ret);
 
     return ret;
@@ -2304,10 +2201,12 @@ static CameraInfo sCameraInfo[] = {
         CAMERA_FACING_BACK,
         90,  /* orientation */
     },
+#ifdef FFC_PRESENT
     {
         CAMERA_FACING_FRONT,
         270,  /* orientation */
     }
+#endif
 };
 
 /** Close this device */
@@ -2705,7 +2604,7 @@ extern "C" {
           version_major : 1,
           version_minor : 0,
           id            : CAMERA_HARDWARE_MODULE_ID,
-          name          : "Crespo camera HAL",
+          name          : "Aries camera HAL",
           author        : "Samsung Corporation",
           methods       : &camera_module_methods,
       },

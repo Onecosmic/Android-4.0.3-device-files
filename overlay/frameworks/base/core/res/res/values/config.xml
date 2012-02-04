@@ -140,7 +140,7 @@
         <item>"mobile_supl,3,0,2,60000,true"</item>
         <item>"mobile_dun,4,0,4,60000,true"</item>
         <item>"mobile_hipri,5,0,3,60000,true"</item>
-        <item>"bluetooth,7,7,0,-1,true"</item>
+        <item>"mobile_bluetooth,7,7,0,-1,true"</item>
         <item>"wifi_p2p,13,1,0,-1,true</item>
     </string-array>
 
@@ -222,5 +222,5 @@
     <bool name="config_intrusiveNotificationLed">true</bool>
  
     <!-- Old usb manager -->
-    <bool name="config_usesLegacyUsbDeviceManager">false</bool>
+    <!-- <bool name="config_usesLegacyUsbDeviceManager">false</bool> -->
 </resources>

@@ -72,7 +72,7 @@ BOARD_KERNEL_PAGESIZE := 4096
 BOARD_KERNEL_CMDLINE := console=ttyFIQ0 no_console_suspend
 
 TARGET_RECOVERY_PIXEL_FORMAT := "BGRA_8888"
-TARGET_RECOVERY_UI_LIB := librecovery_ui_aries
+#TARGET_RECOVERY_UI_LIB := librecovery_ui_aries
 TARGET_RELEASETOOLS_EXTENSIONS := device/samsung/aries
 
 TARGET_USERIMAGES_USE_EXT4 := true

@@ -25,8 +25,12 @@
 
 #include <hardware_legacy/AudioHardwareBase.h>
 #include <media/mediarecorder.h>
+#include <hardware/audio_effect.h>
 
 #include "secril-client.h"
+
+#include <audio_utils/resampler.h>
+#include <audio_utils/echo_reference.h>
 
 extern "C" {
     struct pcm;
@@ -35,8 +39,13 @@ extern "C" {
 };
 
 namespace android_audio_legacy {
-
-using namespace android;
+    using android::AutoMutex;
+    using android::Mutex;
+    using android::RefBase;
+    using android::SortedVector;
+    using android::sp;
+    using android::String16;
+    using android::Vector;
 
 // TODO: determine actual audio DSP and hardware latency
 // Additionnal latency introduced by audio DSP and hardware in ms
@@ -48,24 +57,20 @@ using namespace android;
 // Default audio output sample format
 #define AUDIO_HW_OUT_FORMAT (AudioSystem::PCM_16_BIT)
 // Kernel pcm out buffer size in frames at 44.1kHz
-#define AUDIO_HW_OUT_PERIOD_MULT 8 // (8 * 128 = 1024 frames)
-#define AUDIO_HW_OUT_PERIOD_SZ (PCM_PERIOD_SZ_MIN * AUDIO_HW_OUT_PERIOD_MULT)
+#define AUDIO_HW_OUT_PERIOD_SZ 1024
 #define AUDIO_HW_OUT_PERIOD_CNT 4
 // Default audio output buffer size in bytes
 #define AUDIO_HW_OUT_PERIOD_BYTES (AUDIO_HW_OUT_PERIOD_SZ * 2 * sizeof(int16_t))
 
 // Default audio input sample rate
-#define AUDIO_HW_IN_SAMPLERATE 8000
+#define AUDIO_HW_IN_SAMPLERATE 44100
 // Default audio input channel mask
 #define AUDIO_HW_IN_CHANNELS (AudioSystem::CHANNEL_IN_MONO)
 // Default audio input sample format
 #define AUDIO_HW_IN_FORMAT (AudioSystem::PCM_16_BIT)
-// Number of buffers in audio driver for input
-#define AUDIO_HW_NUM_IN_BUF 2
 // Kernel pcm in buffer size in frames at 44.1kHz (before resampling)
-#define AUDIO_HW_IN_PERIOD_MULT 16  // (16 * 128 = 2048 frames)
-#define AUDIO_HW_IN_PERIOD_SZ (PCM_PERIOD_SZ_MIN * AUDIO_HW_IN_PERIOD_MULT)
-#define AUDIO_HW_IN_PERIOD_CNT 2
+#define AUDIO_HW_IN_PERIOD_SZ 1024
+#define AUDIO_HW_IN_PERIOD_CNT 4
 // Default audio input buffer size in bytes (8kHz mono)
 #define AUDIO_HW_IN_PERIOD_BYTES ((AUDIO_HW_IN_PERIOD_SZ*sizeof(int16_t))/8)
 
@@ -74,13 +79,13 @@ class AudioHardware : public AudioHardwareBase
 {
     class AudioStreamOutALSA;
     class AudioStreamInALSA;
+
 public:
 
     // input path names used to translate from input sources to driver paths
     static const char *inputPathNameDefault;
     static const char *inputPathNameCamcorder;
     static const char *inputPathNameVoiceRecognition;
-    static const char *inputPathNameVoiceCommunication;
 
     AudioHardware();
     virtual ~AudioHardware();
@@ -130,6 +135,8 @@ public:
 
             status_t setInputSource_l(audio_source source);
 
+            void setVoiceVolume_l(float volume);
+
     static uint32_t    getInputSampleRate(uint32_t sampleRate);
            sp <AudioStreamInALSA> getActiveInput_l();
 
@@ -142,6 +149,11 @@ public:
            void closeMixer_l();
 
            sp <AudioStreamOutALSA>  output() { return mOutput; }
+
+           struct echo_reference_itfe *getEchoReference(audio_format_t format,
+                                          uint32_t channelCount,
+                                          uint32_t samplingRate);
+           void releaseEchoReference(struct echo_reference_itfe *reference);
 
 protected:
     virtual status_t dump(int fd, const Vector<String16>& args);
@@ -165,6 +177,7 @@ private:
     uint32_t        mPcmOpenCnt;
     uint32_t        mMixerOpenCnt;
     bool            mInCallAudioMode;
+    float           mVoiceVol;
 
     audio_source    mInputSource;
     bool            mBluetoothNrec;
@@ -183,6 +196,7 @@ private:
     int             (*setCallClockSync)(HRilClient, SoundClockCondition);
     void            loadRILD(void);
     status_t        connectRILDIfRequired(void);
+    struct echo_reference_itfe *mEchoReference;
 
 #ifdef HAVE_FM_RADIO
     int             mFmFd;
@@ -194,7 +208,17 @@ private:
     int             mDriverOp;
 
     static uint32_t         checkInputSampleRate(uint32_t sampleRate);
-    static const uint32_t   inputSamplingRates[];
+
+    // column index in inputConfigTable[][]
+    enum {
+        INPUT_CONFIG_SAMPLE_RATE,
+        INPUT_CONFIG_BUFFER_RATIO,
+        INPUT_CONFIG_CNT
+    };
+
+    // contains the list of valid sampling rates for input streams as well as the ratio
+    // between the kernel buffer size and audio hal buffer size for each sampling rate
+    static const uint32_t  inputConfigTable[][INPUT_CONFIG_CNT];
 
     class AudioStreamOutALSA : public AudioStreamOut, public RefBase
     {
@@ -239,7 +263,13 @@ private:
                 void lock();
                 void unlock();
 
+                void addEchoReference(struct echo_reference_itfe *reference);
+                void removeEchoReference(struct echo_reference_itfe *reference);
+
     private:
+
+                int computeEchoReferenceDelay(size_t frames, struct timespec *echoRefRenderTime);
+                int getPlaybackDelay(size_t frames, struct echo_reference_buffer *buffer);
 
         Mutex mLock;
         AudioHardware* mHardware;
@@ -256,65 +286,10 @@ private:
         int mDriverOp;
         int mStandbyCnt;
         bool mSleepReq;
+        struct echo_reference_itfe *mEchoReference;
     };
 
-    class DownSampler;
-
-    class BufferProvider
-    {
-    public:
-
-        struct Buffer {
-            union {
-                void*       raw;
-                short*      i16;
-                int8_t*     i8;
-            };
-            size_t frameCount;
-        };
-
-        virtual ~BufferProvider() {}
-
-        virtual status_t getNextBuffer(Buffer* buffer) = 0;
-        virtual void releaseBuffer(Buffer* buffer) = 0;
-    };
-
-    class DownSampler {
-    public:
-        DownSampler(uint32_t outSampleRate,
-                  uint32_t channelCount,
-                  uint32_t frameCount,
-                  BufferProvider* provider);
-
-        virtual ~DownSampler();
-
-                void reset();
-                status_t initCheck() { return mStatus; }
-                int resample(int16_t* out, size_t *outFrameCount);
-
-    private:
-        status_t    mStatus;
-        BufferProvider* mProvider;
-        uint32_t mSampleRate;
-        uint32_t mChannelCount;
-        uint32_t mFrameCount;
-        int16_t *mInLeft;
-        int16_t *mInRight;
-        int16_t *mTmpLeft;
-        int16_t *mTmpRight;
-        int16_t *mTmp2Left;
-        int16_t *mTmp2Right;
-        int16_t *mOutLeft;
-        int16_t *mOutRight;
-        int mInInBuf;
-        int mInTmpBuf;
-        int mInTmp2Buf;
-        int mOutBufPos;
-        int mInOutBuf;
-    };
-
-
-    class AudioStreamInALSA : public AudioStreamIn, public BufferProvider, public RefBase
+    class AudioStreamInALSA : public AudioStreamIn, public RefBase
     {
 
      public:
@@ -338,6 +313,9 @@ private:
         virtual status_t setParameters(const String8& keyValuePairs);
         virtual String8 getParameters(const String8& keys);
         virtual unsigned int getInputFramesLost() const { return 0; }
+        virtual status_t    addAudioEffect(effect_handle_t effect);
+        virtual status_t    removeAudioEffect(effect_handle_t effect);
+
                 uint32_t device() { return mDevices; }
                 void doStandby_l();
                 void close_l();
@@ -346,19 +324,36 @@ private:
 
         static size_t getBufferSize(uint32_t sampleRate, int channelCount);
 
-        // BufferProvider
-        virtual status_t getNextBuffer(BufferProvider::Buffer* buffer);
-        virtual void releaseBuffer(BufferProvider::Buffer* buffer);
-
-        // Stubs (ICS)
-        virtual status_t addAudioEffect(effect_handle_t effect) { return INVALID_OPERATION; }
-        virtual status_t removeAudioEffect(effect_handle_t effect) { return INVALID_OPERATION; }
+        // resampler_buffer_provider
+        static int getNextBufferStatic(struct resampler_buffer_provider *provider,
+                             struct resampler_buffer* buffer);
+        static void releaseBufferStatic(struct resampler_buffer_provider *provider,
+                             struct resampler_buffer* buffer);
 
         int prepareLock();
         void lock();
         void unlock();
 
-    private:
+     private:
+
+        struct ResamplerBufferProvider {
+            struct resampler_buffer_provider mProvider;
+            AudioStreamInALSA *mInputStream;
+        };
+
+        ssize_t readFrames(void* buffer, ssize_t frames);
+        ssize_t processFrames(void* buffer, ssize_t frames);
+        int32_t updateEchoReference(size_t frames);
+        void pushEchoReference(size_t frames);
+        void updateEchoDelay(size_t frames, struct timespec *echoRefRenderTime);
+        void getCaptureDelay(size_t frames, struct echo_reference_buffer *buffer);
+        status_t setPreProcessorEchoDelay(effect_handle_t handle, int32_t delayUs);
+        status_t setPreprocessorParam(effect_handle_t handle, effect_param_t *param);
+
+        // BufferProvider
+        status_t getNextBuffer(struct resampler_buffer* buffer);
+        void releaseBuffer(struct resampler_buffer* buffer);
+
         Mutex mLock;
         AudioHardware* mHardware;
         struct pcm *mPcm;
@@ -371,18 +366,28 @@ private:
         uint32_t mChannelCount;
         uint32_t mSampleRate;
         size_t mBufferSize;
-        DownSampler *mDownSampler;
+        struct resampler_itfe *mDownSampler;
+        struct ResamplerBufferProvider mBufferProvider;
         status_t mReadStatus;
-        size_t mInPcmInBuf;
-        int16_t *mPcmIn;
+        size_t mInputFramesIn;
+        int16_t *mInputBuf;
         //  trace driver operations for dump
         int mDriverOp;
         int mStandbyCnt;
         bool mSleepReq;
+        SortedVector<effect_handle_t> mPreprocessors;
+        int16_t *mProcBuf;
+        size_t mProcBufSize;
+        size_t mProcFramesIn;
+        int16_t *mRefBuf;
+        size_t mRefBufSize;
+        size_t mRefFramesIn;
+        struct echo_reference_itfe *mEchoReference;
+        bool mNeedEchoReference;
     };
 
 };
 
-}; // namespace android_audio_legacy
+}; // namespace android
 
 #endif

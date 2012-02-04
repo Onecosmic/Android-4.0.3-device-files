@@ -22,7 +22,6 @@ BOARD_HAVE_FM_RADIO := true
 BOARD_GLOBAL_CFLAGS += -DHAVE_FM_RADIO
 BOARD_FM_DEVICE := si4709
 
-BOARD_CUSTOM_RECOVERY_KEYMAPPING := /device/samsung/aries/recovery/recovery_keys.c
 
 ifeq ($(HOST_OS),linux)
 WITH_DEXPREOPT := true
@@ -33,3 +32,13 @@ endif
 
 # Use the parts that are common between all ariess
 include device/samsung/aries/BoardConfigCommon.mk
+
+
+# Recovery
+TARGET_USERIMAGES_USE_EXT4 := true
+BOARD_CUSTOM_RECOVERY_KEYMAPPING := device/samsung/aries/recovery/recovery_keys.c
+BOARD_CUSTOM_GRAPHICS := device/samsung/aries/recovery/graphics.c
+BOARD_USES_BML_OVER_MTD := true
+BOARD_CUSTOM_BOOTIMG_MK := device/samsung/aries/shbootimg.mk
+TARGET_RECOVERY_PRE_COMMAND := "echo 1 > /cache/.startrecovery; sync;"
+BOARD_HAS_NO_SELECT_BUTTON := true

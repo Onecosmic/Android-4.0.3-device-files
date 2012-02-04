@@ -43,4 +43,4 @@ extern "C" void destroyAudioPolicyManager(AudioPolicyInterface *interface)
 }
 
 
-}; // namespace android_audio_legacy
+}; // namespace android

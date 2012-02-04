@@ -4,7 +4,7 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	SEC_OMX_Venc.c
 
-LOCAL_MODULE := libSEC_OMX_Venc
+LOCAL_MODULE := libSEC_OMX_Venc.aries
 LOCAL_ARM_MODE := arm
 LOCAL_MODULE_TAGS := optional
 
